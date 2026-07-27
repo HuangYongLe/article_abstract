@@ -1,6 +1,6 @@
 # AI 文章摘要工具
 
-粘贴任意文章链接，一��生成三种长度的中文 AI 摘要。
+粘贴任意文章链接，一键生成三种长度的中文 AI 摘要。
 
 ## 功能截图
 
@@ -169,7 +169,7 @@ src/
 │   ├── scraper.ts                # 文章抓取与正文提取
 │   ├── utils.ts                  # 工具函数
 │   └── db/
-│       ├── index.ts              # 数���库连接
+│       ├── index.ts              # 数   库连接
 │       ├── schema.ts             # Drizzle schema
 │       └── queries.ts            # CRUD 操作
 └── tests/
