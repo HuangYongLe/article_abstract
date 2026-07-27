@@ -1,7 +1,7 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "07b10ed9-dcbb-44bb-9292-70ba45e4fced",
+  "id": "985bd02d-406f-4a87-a34d-77136f799cad",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "tables": {
     "summaries": {
@@ -28,32 +28,46 @@
           "notNull": true,
           "autoincrement": false
         },
-        "content": {
-          "name": "content",
+        "site_name": {
+          "name": "site_name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "one_sentence": {
+          "name": "one_sentence",
           "type": "text",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false
         },
-        "one_line": {
-          "name": "one_line",
+        "short_summary": {
+          "name": "short_summary",
           "type": "text",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false
         },
-        "short": {
-          "name": "short",
+        "detailed_summary": {
+          "name": "detailed_summary",
           "type": "text",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false
         },
-        "detailed": {
-          "name": "detailed",
+        "model": {
+          "name": "model",
           "type": "text",
           "primaryKey": false,
           "notNull": true,
+          "autoincrement": false
+        },
+        "token_count": {
+          "name": "token_count",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
           "autoincrement": false
         },
         "created_at": {

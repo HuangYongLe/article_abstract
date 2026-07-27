@@ -1,1 +1,36 @@
 @import "tailwindcss";
+
+@theme {
+  --font-sans:
+    var(--font-inter),
+    "PingFang SC",
+    "Hiragino Sans GB",
+    "Microsoft YaHei",
+    "Noto Sans SC",
+    "WenQuanYi Micro Hei",
+    sans-serif;
+}
+
+/* 基础性能优化 */
+html {
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* 图片懒加载占位 */
+img {
+  content-visibility: auto;
+}
+
+/* 减少动画偏好 */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

@@ -1,21 +1,83 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useRef } from "react";
 import Link from "next/link";
 
 import { UrlInputForm } from "@/components/UrlInputForm";
 import { SummaryResult } from "@/components/SummaryResult";
 import type { Summary } from "@/lib/db/schema";
+import type { ApiErrorBody } from "@/lib/errors";
+
+/** API 错误信息 + 当前 URL（用于重试） */
+interface ErrorState {
+  error: string;
+  code: string;
+  detail?: string;
+  retryable?: boolean;
+  url: string;
+}
+
+/** 根据错误码获取图标和颜色 */
+function errorConfig(code: string) {
+  switch (code) {
+    case "SCRAPE_FAILED":
+      return {
+        icon: "M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636",
+        title: "抓取失败",
+        bg: "bg-amber-50 border-amber-200",
+        text: "text-amber-800",
+        iconBg: "bg-amber-100 text-amber-600",
+      };
+    case "AI_TIMEOUT":
+      return {
+        icon: "M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z",
+        title: "AI 响应超时",
+        bg: "bg-orange-50 border-orange-200",
+        text: "text-orange-800",
+        iconBg: "bg-orange-100 text-orange-600",
+      };
+    case "AI_RATE_LIMITED":
+      return {
+        icon: "M13 10V3L4 14h7v7l9-11h-7z",
+        title: "AI 服务繁忙",
+        bg: "bg-orange-50 border-orange-200",
+        text: "text-orange-800",
+        iconBg: "bg-orange-100 text-orange-600",
+      };
+    case "AI_API_ERROR":
+    case "AI_EMPTY_RESPONSE":
+    case "AI_INVALID_RESPONSE":
+      return {
+        icon: "M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z",
+        title: "AI 服务异常",
+        bg: "bg-red-50 border-red-200",
+        text: "text-red-800",
+        iconBg: "bg-red-100 text-red-600",
+      };
+    default:
+      return {
+        icon: "M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z",
+        title: "出错了",
+        bg: "bg-red-50 border-red-200",
+        text: "text-red-800",
+        iconBg: "bg-red-100 text-red-600",
+      };
+  }
+}
 
 export default function Home(): React.ReactElement {
   const [loading, setLoading] = useState(false);
   const [summary, setSummary] = useState<Summary | null>(null);
-  const [error, setError] = useState("");
+  const [errorState, setErrorState] = useState<ErrorState | null>(null);
+  const [partial, setPartial] = useState(false);
+  const lastUrl = useRef("");
 
   const handleSubmit = useCallback(async (url: string) => {
     setLoading(true);
-    setError("");
+    setErrorState(null);
     setSummary(null);
+    setPartial(false);
+    lastUrl.current = url;
 
     try {
       const res = await fetch("/api/summarize", {
@@ -24,23 +86,50 @@ export default function Home(): React.ReactElement {
         body: JSON.stringify({ url }),
       });
 
+      const data = await res.json();
+
       if (!res.ok) {
-        const data = (await res.json()) as { error?: string };
-        throw new Error(data.error ?? "生成失败，请重试");
+        const err = data as ApiErrorBody;
+        setErrorState({
+          error: err.error ?? "生成失败，请重试",
+          code: err.code ?? "UNKNOWN",
+          detail: err.detail,
+          retryable: err.retryable,
+          url,
+        });
+        return;
       }
 
-      const data = (await res.json()) as Summary;
-      setSummary(data);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "生成失败，请重试");
+      // 处理降级抓取提示
+      if (data._partial) {
+        setPartial(true);
+        delete data._partial;
+      }
+
+      setSummary(data as Summary);
+    } catch {
+      setErrorState({
+        error: "网络连接失败，请检查网络后重试",
+        code: "NETWORK_ERROR",
+        retryable: true,
+        url,
+      });
     } finally {
       setLoading(false);
     }
   }, []);
 
+  const handleRetry = useCallback(() => {
+    if (lastUrl.current) {
+      handleSubmit(lastUrl.current);
+    }
+  }, [handleSubmit]);
+
+  const config = errorState ? errorConfig(errorState.code) : null;
+
   return (
     <main className="mx-auto max-w-3xl px-4 py-10 sm:py-14">
-      {/* Hero 区 */}
+      {/* Hero */}
       <div className="text-center">
         <h1 className="text-3xl font-bold tracking-tight text-gray-900 sm:text-4xl">
           AI 文章摘要工具
@@ -75,12 +164,57 @@ export default function Home(): React.ReactElement {
       )}
 
       {/* 错误提示 */}
-      {error && !loading && (
-        <div className="mt-8 flex items-center gap-2 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-          <svg className="h-5 w-5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-            <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+      {errorState && !loading && config && (
+        <div className={"mt-8 rounded-xl border p-5 " + config.bg}>
+          <div className="flex items-start gap-3">
+            <div className={"flex-shrink-0 rounded-lg p-2 " + config.iconBg}>
+              <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d={config.icon} />
+              </svg>
+            </div>
+            <div className="min-w-0 flex-1">
+              <h3 className={"text-sm font-semibold " + config.text}>
+                {config.title}
+              </h3>
+              <p className={"mt-1 text-sm " + config.text + "/80"}>
+                {errorState.error}
+              </p>
+              {errorState.detail && (
+                <p className="mt-1.5 text-xs text-gray-500 break-all">
+                  {errorState.detail}
+                </p>
+              )}
+              {errorState.retryable && (
+                <button
+                  onClick={handleRetry}
+                  className="mt-3 inline-flex items-center gap-1.5 rounded-lg border border-current/20 px-3 py-1.5 text-xs font-medium transition-colors hover:bg-white/50"
+                >
+                  <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                  </svg>
+                  重试
+                </button>
+              )}
+            </div>
+            <button
+              onClick={() => setErrorState(null)}
+              className={"flex-shrink-0 rounded p-1 transition-colors hover:bg-black/5 " + config.text + "/60"}
+            >
+              <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* 降级抓取提示 */}
+      {partial && summary && !loading && (
+        <div className="mt-6 flex items-center gap-2 rounded-lg border border-blue-200 bg-blue-50 px-4 py-2.5 text-sm text-blue-700">
+          <svg className="h-4 w-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
           </svg>
-          {error}
+          页面正文提取不完整，摘要基于文章元信息生成，内容仅供参考。
         </div>
       )}
 
@@ -91,8 +225,8 @@ export default function Home(): React.ReactElement {
         </div>
       )}
 
-      {/* 空状态引导 */}
-      {!summary && !loading && !error && (
+      {/* 空状态 */}
+      {!summary && !loading && !errorState && (
         <div className="mt-12">
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
             {[

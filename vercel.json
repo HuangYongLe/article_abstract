@@ -1,0 +1,13 @@
+{
+  "functions": {
+    "src/app/api/summarize/route.ts": {
+      "maxDuration": 60
+    },
+    "src/app/api/history/route.ts": {
+      "maxDuration": 10
+    },
+    "src/app/api/history/[id]/route.ts": {
+      "maxDuration": 10
+    }
+  }
+}

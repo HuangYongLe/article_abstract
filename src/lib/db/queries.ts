@@ -1,8 +1,11 @@
 import { eq, desc, sql } from "drizzle-orm";
 
-import { db } from "./index";
+import { db, client } from "./index";
 import { summaries } from "./schema";
 import type { NewSummary, Summary } from "./schema";
+
+// 重新导出底层 client（测试/迁移等场景需要）
+export { client };
 
 // 列表查询 — 必须包含分页
 export async function getSummaries(
@@ -12,7 +15,7 @@ export async function getSummaries(
   return db
     .select()
     .from(summaries)
-    .orderBy(desc(summaries.createdAt))
+    .orderBy(desc(summaries.createdAt), desc(summaries.id))
     .limit(limit)
     .offset((page - 1) * limit);
 }
@@ -57,6 +60,17 @@ export async function getRecentSummaries(
   return db
     .select()
     .from(summaries)
-    .orderBy(desc(summaries.createdAt))
+    .orderBy(desc(summaries.createdAt), desc(summaries.id))
+    .limit(limit);
+}
+
+// 获取所有摘要 ID — 用于 SSG generateStaticParams
+export async function getSummaryIds(
+  limit: number = 1000
+): Promise<{ id: number }[]> {
+  return db
+    .select({ id: summaries.id })
+    .from(summaries)
+    .orderBy(desc(summaries.createdAt), desc(summaries.id))
     .limit(limit);
 }

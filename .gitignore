@@ -33,9 +33,14 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 
-# drizzle local db
+# drizzle local db (file: 协议本地数据库)
 local.db
 local.db-*
+dev.db
+dev.db-*
+
+# Windows device name artifact (do not track)
+nul
 
 # SQLite database files (data/)
 data/*.db

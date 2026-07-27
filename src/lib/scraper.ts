@@ -15,7 +15,6 @@ const FETCH_HEADERS: Record<string, string> = {
   "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8",
 };
 
-/** 需要移除的非内容标签 */
 const REMOVE_TAGS =
   "script, style, nav, footer, header, aside, iframe, " +
   ".ad, .advertisement, .sidebar, .comment, .related, " +
@@ -28,11 +27,12 @@ export interface ScrapeResult {
   title: string;
   content: string;
   siteName: string | null;
+  /** 是否为降级提��（正文不足时从 meta 标签获取） */
+  partial: boolean;
 }
 
 // --- 内部函数 ---
 
-/** 从 Cheerio 实例提取标题 */
 function extractTitle($: cheerio.CheerioAPI): string {
   return (
     $('meta[property="og:title"]').attr("content")?.trim() ||
@@ -42,11 +42,7 @@ function extractTitle($: cheerio.CheerioAPI): string {
   );
 }
 
-/** 从 Cheerio 实例提取站点名 */
-function extractSiteName(
-  $: cheerio.CheerioAPI,
-  url: string
-): string | null {
+function extractSiteName($: cheerio.CheerioAPI, url: string): string | null {
   return (
     $('meta[property="og:site_name"]').attr("content")?.trim() ||
     new URL(url).hostname ||
@@ -54,7 +50,6 @@ function extractSiteName(
   );
 }
 
-/** 修复微信公众号图片懒加载：data-src → src */
 function fixWeChatImages($: cheerio.CheerioAPI): void {
   $("img[data-src]").each((_, el) => {
     const src = $(el).attr("data-src");
@@ -62,9 +57,7 @@ function fixWeChatImages($: cheerio.CheerioAPI): void {
   });
 }
 
-/** 从 HTML 提取正文纯文本 */
 function extractContent($: cheerio.CheerioAPI): string {
-  // 选择器优先级：article → main → [role=main] → .post-content → .article-body → body
   const articleEl =
     $("article").first() ||
     $("main").first() ||
@@ -73,21 +66,12 @@ function extractContent($: cheerio.CheerioAPI): string {
     $(".article-body").first() ||
     $("body");
 
-  // 清洗：移除非内容标签
   articleEl.find(REMOVE_TAGS).remove();
 
-  // 提取纯文本，压缩空白，截断
-  const text = articleEl
-    .text()
-    .replace(/\s+/g, " ")
-    .trim();
+  const text = articleEl.text().replace(/\s+/g, " ").trim();
 
-  // 如果正文过短，尝试从 noscript 标签中提取（部分站点把 SSR 内容放里面）
   if (text.length < MIN_CONTENT_LENGTH) {
-    const noscriptText = $("noscript")
-      .text()
-      .replace(/\s+/g, " ")
-      .trim();
+    const noscriptText = $("noscript").text().replace(/\s+/g, " ").trim();
     if (noscriptText.length >= MIN_CONTENT_LENGTH) {
       return truncateText(noscriptText, MAX_CONTENT_LENGTH);
     }
@@ -96,29 +80,69 @@ function extractContent($: cheerio.CheerioAPI): string {
   return truncateText(text, MAX_CONTENT_LENGTH);
 }
 
-/** 检测是否为 JS 客户端渲染的 SPA 页面 */
 function isSPA($: cheerio.CheerioAPI): boolean {
-  // 空 root div（React/Vue SPA 标志）
   const root = $("#root, #app, #__next, #__nuxt");
   if (root.length && root.text().trim().length < 50) return true;
-  // 极小的 <body> 内容，且包含大量 script 标签
   const bodyText = $("body").text().trim().replace(/\s+/g, " ");
   const scriptCount = $("script").length;
   if (bodyText.length < 200 && scriptCount > 3) return true;
   return false;
 }
 
-/** 用 Cheerio 解析 HTML 并提取结构化内容 */
+/** 兜底提取：从 meta 标签和 JSON-LD 获取文章基本信息 */
+function fallbackExtract($: cheerio.CheerioAPI): {
+  title: string;
+  content: string;
+  siteName: string | null;
+} {
+  const title =
+    $('meta[property="og:title"]').attr("content")?.trim() ||
+    $('meta[name="twitter:title"]').attr("content")?.trim() ||
+    $("title").text().trim() ||
+    "Untitled";
+
+  const description =
+    $('meta[property="og:description"]').attr("content")?.trim() ||
+    $('meta[name="description"]').attr("content")?.trim() ||
+    $('meta[name="twitter:description"]').attr("content")?.trim() ||
+    "";
+
+  // 尝试从 JSON-LD 提取更多内容
+  let jsonLdText = "";
+  $('script[type="application/ld+json"]').each((_, el) => {
+    try {
+      const data = JSON.parse($(el).html() || "{}");
+      if (data.description) jsonLdText += data.description + " ";
+      if (data.articleBody) jsonLdText += data.articleBody + " ";
+    } catch { /* skip invalid JSON */ }
+  });
+
+  const content = [description, jsonLdText]
+    .map((s) => s.trim())
+    .filter(Boolean)
+    .join("\n\n");
+
+  return { title, content, siteName: null };
+}
+
 function parseHtmlContent(html: string, url: string): ScrapeResult {
   const $ = cheerio.load(html);
-
   fixWeChatImages($);
 
   const title = extractTitle($);
   const siteName = extractSiteName($, url);
   const content = extractContent($);
 
-  if (content.length < MIN_CONTENT_LENGTH) {
+  // 正文充足 — 正常返回
+  if (content.length >= MIN_CONTENT_LENGTH) {
+    return { url, title, content, siteName, partial: false };
+  }
+
+  // 正文不足 — 尝试兜底提取
+  const fallback = fallbackExtract($);
+
+  // 兜底提取也无内容 — 明确报错
+  if (fallback.content.length < 20) {
     if (isSPA($)) {
       throw new Error(
         "页面为 JS 客户端渲染（如 React/Vue SPA），静态抓取无法获取内容。" +
@@ -130,12 +154,18 @@ function parseHtmlContent(html: string, url: string): ScrapeResult {
     );
   }
 
-  return { url, title, content, siteName };
+  // 兜底提取成功 — 返回降级内容
+  return {
+    url,
+    title: fallback.title || title,
+    content: truncateText(fallback.content, MAX_CONTENT_LENGTH),
+    siteName: siteName || fallback.siteName,
+    partial: true,
+  };
 }
 
 // --- 导出函数 ---
 
-/** 抓取文章并提取正文 — 去掉导航、广告等非内容元素 */
 export async function scrapeArticle(url: string): Promise<ScrapeResult> {
   const res = await fetch(url, {
     headers: FETCH_HEADERS,
@@ -143,11 +173,9 @@ export async function scrapeArticle(url: string): Promise<ScrapeResult> {
   });
 
   if (!res.ok) {
-    throw new Error(`Fetch failed: HTTP ${res.status}`);
+    throw new Error("Fetch failed: HTTP " + res.status);
   }
 
   const html = await res.text();
-  const result = parseHtmlContent(html, url);
-
-  return result;
+  return parseHtmlContent(html, url);
 }
