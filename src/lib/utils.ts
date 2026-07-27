@@ -13,8 +13,12 @@ export function truncateText(text: string, maxLength: number): string {
   return text.length > maxLength ? text.slice(0, maxLength) : text;
 }
 
-/** 格式化时间戳为中文日期 */
-export function formatDate(date: Date): string {
+/** 格式化时间戳为中文日期（兼容 Date 对象和 Unix 秒数） */
+export function formatDate(dateOrTimestamp: Date | number): string {
+  const date =
+    dateOrTimestamp instanceof Date
+      ? dateOrTimestamp
+      : new Date(dateOrTimestamp * 1000);
   return date.toLocaleDateString("zh-CN", {
     year: "numeric",
     month: "long",

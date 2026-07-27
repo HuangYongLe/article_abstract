@@ -36,3 +36,8 @@ next-env.d.ts
 # drizzle local db
 local.db
 local.db-*
+
+# SQLite database files (data/)
+data/*.db
+data/*.db-wal
+data/*.db-shm

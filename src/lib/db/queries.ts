@@ -33,6 +33,7 @@ export async function createSummary(
   data: NewSummary
 ): Promise<Summary> {
   const [result] = await db.insert(summaries).values(data).returning();
+  if (!result) throw new Error("Failed to create summary");
   return result;
 }
 
@@ -46,7 +47,7 @@ export async function countSummaries(): Promise<number> {
   const [result] = await db
     .select({ count: sql<number>`count(*)` })
     .from(summaries);
-  return result.count;
+  return result?.count ?? 0;
 }
 
 // 获取最近记录 — 用于首页展示
