@@ -15,8 +15,14 @@ export const dynamicParams = true;
 export const revalidate = 60;
 
 export async function generateStaticParams(): Promise<{ id: string }[]> {
-  const rows = await getSummaryIds(500);
-  return rows.map((row) => ({ id: String(row.id) }));
+  try {
+    const rows = await getSummaryIds(500);
+    return rows.map((row) => ({ id: String(row.id) }));
+  } catch {
+    // 数据库不可用时（如 Vercel 首次部署尚未配置 DATABASE_URL），跳过预生成
+    // dynamicParams=true 保证新记录首次访问时按需 SSR 渲染
+    return [];
+  }
 }
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {

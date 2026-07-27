@@ -23,13 +23,18 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   ];
 
   // 为每个摘要详情页生成 sitemap 条目
-  const ids = await getSummaryIds(1000);
-  const summaryPages: MetadataRoute.Sitemap = ids.map((item) => ({
-    url: `${baseUrl}/history/${item.id}`,
-    lastModified: new Date(),
-    changeFrequency: "monthly",
-    priority: 0.6,
-  }));
+  let summaryPages: MetadataRoute.Sitemap = [];
+  try {
+    const ids = await getSummaryIds(1000);
+    summaryPages = ids.map((item) => ({
+      url: `${baseUrl}/history/${item.id}`,
+      lastModified: new Date(),
+      changeFrequency: "monthly" as const,
+      priority: 0.6,
+    }));
+  } catch {
+    // 数据库不可用时跳过动态条目，仅返回静态页面
+  }
 
   return [...staticPages, ...summaryPages];
 }
