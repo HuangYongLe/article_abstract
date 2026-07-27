@@ -89,6 +89,28 @@ function isSPA($: cheerio.CheerioAPI): boolean {
   return false;
 }
 
+/** 检测反爬/人机验证页面（Cloudflare、Akamai 等） */
+function isAntiBot($: cheerio.CheerioAPI): boolean {
+  const title = $("title").text().toLowerCase();
+  const bodyText = $("body").text().toLowerCase();
+
+  // Cloudflare Challenge / Turnstile
+  if (title.includes("just a moment") || title.includes("attention required")) return true;
+  if (bodyText.includes("checking your browser") || bodyText.includes("cf-browser-verification")) return true;
+  if ($("#challenge-running, #challenge-stage, .cf-browser-verification").length > 0) return true;
+
+  // 通用 JavaScript 挑战页
+  if (title.includes("请启用") && title.includes("javascript")) return true;
+  if (bodyText.includes("enable javascript") && bodyText.includes("cookies")) return true;
+
+  // 页面内容极少但有大量 script（验证/挑战页面特征）
+  const textLen = bodyText.replace(/\s+/g, "").length;
+  const scriptCount = $("script").length;
+  if (textLen < 50 && scriptCount >= 3) return true;
+
+  return false;
+}
+
 /** 兜底提取：从 meta 标签和 JSON-LD 获取文章基本信息 */
 function fallbackExtract($: cheerio.CheerioAPI): {
   title: string;
@@ -128,6 +150,14 @@ function fallbackExtract($: cheerio.CheerioAPI): {
 function parseHtmlContent(html: string, url: string): ScrapeResult {
   const $ = cheerio.load(html);
   fixWeChatImages($);
+
+  // 提前检测反爬/人机验证页面（如 Vercel IP 被 Cloudflare 拦截）
+  if (isAntiBot($)) {
+    throw new Error(
+      "目标站点启用了反爬验证（如 Cloudflare 人机认证），部署服务器 IP 被拦截。" +
+      "可尝试在本地运行、使用代理服务，或换用不限制境外 IP 的站点"
+    );
+  }
 
   const title = extractTitle($);
   const siteName = extractSiteName($, url);
