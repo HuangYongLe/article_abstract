@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev --turbopack",
-    "build": "next build",
+    "build": "tsx scripts/migrate.ts run && next build",
     "start": "next start",
     "db:push": "drizzle-kit push",
     "db:generate": "drizzle-kit generate",
