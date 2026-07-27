@@ -8,6 +8,10 @@ const MIN_CONTENT_LENGTH = 100;
 const MAX_CONTENT_LENGTH = 12000;
 const FETCH_TIMEOUT_MS = 10000;
 
+/** ScrapingBee 代理 API 配置 */
+const SCRAPINGBEE_API_KEY = process.env.SCRAPINGBEE_API_KEY;
+const SCRAPINGBEE_ENDPOINT = "https://app.scrapingbee.com/api/v1";
+
 const FETCH_HEADERS: Record<string, string> = {
   "User-Agent":
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
@@ -194,9 +198,36 @@ function parseHtmlContent(html: string, url: string): ScrapeResult {
   };
 }
 
-// --- 导出函数 ---
+// --- 抓取实现 ---
 
-export async function scrapeArticle(url: string): Promise<ScrapeResult> {
+/** 通过 ScrapingBee 代理抓取（绕过 Cloudflare 等反爬） */
+async function scrapeViaProxy(url: string): Promise<string> {
+  const params = new URLSearchParams({
+    url,
+    render_js: "false",          // 文章站点无需 JS 渲染
+    premium_proxy: "true",       // 使用住宅代理绕过 Cloudflare
+  });
+
+  const proxyUrl = `${SCRAPINGBEE_ENDPOINT}?${params.toString()}`;
+  const res = await fetch(proxyUrl, {
+    headers: { Authorization: `Bearer ${SCRAPINGBEE_API_KEY!}` },
+    signal: AbortSignal.timeout(30000), // 代理可能更慢
+  });
+
+  if (!res.ok) {
+    // 402 = 额度耗尽
+    if (res.status === 402) {
+      throw new Error("ScrapingBee 额度已用完，请充值或等待下月重置");
+    }
+    const body = await res.text().catch(() => "");
+    throw new Error(`ScrapingBee 代理失败 (HTTP ${res.status}): ${body.slice(0, 200)}`);
+  }
+
+  return res.text();
+}
+
+/** 直接抓取（本地开发/Vercel 未配置代理时使用） */
+async function scrapeDirect(url: string): Promise<string> {
   const res = await fetch(url, {
     headers: FETCH_HEADERS,
     signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
@@ -206,6 +237,15 @@ export async function scrapeArticle(url: string): Promise<ScrapeResult> {
     throw new Error("Fetch failed: HTTP " + res.status);
   }
 
-  const html = await res.text();
+  return res.text();
+}
+
+export async function scrapeArticle(url: string): Promise<ScrapeResult> {
+  // 配置了 ScrapingBee 密钥 → 走代理（绕过反爬）
+  // 未配置 → 直连（本地开发足够）
+  const html = SCRAPINGBEE_API_KEY
+    ? await scrapeViaProxy(url)
+    : await scrapeDirect(url);
+
   return parseHtmlContent(html, url);
 }

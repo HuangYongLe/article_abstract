@@ -95,6 +95,7 @@ npm run test:watch
 | `OPENAI_BASE_URL`        | 否   | 默认 `https://api.openai.com/v1`，DeepSeek 填 `https://api.deepseek.com/v1` |
 | `OPENAI_MODEL`           | 否   | 默认 `gpt-4o`，DeepSeek 填 `deepseek-chat`                    |
 | `MOCK_AI`                | 否   | 设为 `true` 时跳过真实 AI 调用，返回模拟数据，用于本地开发调试  |
+| `SCRAPINGBEE_API_KEY`    | 否   | Vercel 部署时建议设置，用于绕过 Cloudflare 反爬（免费 1000 credits/月） |
 
 ## 部署到 Vercel
 
@@ -139,7 +140,25 @@ OPENAI_MODEL=deepseek-chat
 
 4. Framework 选择 **Next.js**，点击 Deploy
 
-### 3. 执行数据库迁移（首次部署）
+> **注意**：Vercel 的美东/欧洲 IP 访问部分中文站点（如 ruanyifeng.com、微信公众号等）会被 Cloudflare 拦截。建议配置 ScrapingBee 代理（见下方）来绕过。
+
+### 3. （推荐）配置 ScrapingBee 代理
+
+Vercel 部署后，部分中文站点会因 IP 地理位置限制而抓取失败。配置 ScrapingBee 代理即可解决：
+
+1. 注册 [ScrapingBee](https://www.scrapingbee.com/)（免费额度 **1000 credits/月**，约 100 次抓取）
+2. 在 Dashboard 中复制 **API Key**
+3. 在 Vercel 项目 Settings → Environment Variables 中添加：
+
+```bash
+SCRAPINGBEE_API_KEY=你的API_Key
+```
+
+4. 重新部署后即可正常抓取所有站点（Premium Proxy 模式每次 ~10 credits）
+
+> 本地开发无需设置此项——本地 IP 不会被 Cloudflare 拦截。
+
+### 4. 执行数据库迁移（首次部署）
 
 部署完成后，在 Vercel 项目 Dashboard 中通过 Terminal 运行：
 
